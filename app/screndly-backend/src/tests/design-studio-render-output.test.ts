@@ -209,3 +209,57 @@ test('background rendering preserves preview focal-point placement', async () =>
   assert.ok(center[2] > 240 && center[0] < 20 && center[1] < 20, `expected center focal center to sample blue band, received ${center.join(',')}`);
   assert.ok(right.every((value) => value > 240), `expected right focal center to sample white band, received ${right.join(',')}`);
 });
+
+test('renderDesignStudioImage composites circle inset into final export', async () => {
+  const originalFindMany = prisma.setting.findMany.bind(prisma.setting);
+  prisma.setting.findMany = (async () => []) as typeof prisma.setting.findMany;
+
+  try {
+    const template = buildTemplate();
+    const backgroundImage = await buildBackgroundDataUri();
+    const circleImage = await sharp({
+      create: {
+        width: 300,
+        height: 180,
+        channels: 3,
+        background: '#ff0000',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    const circleImageDataUri = `data:image/png;base64,${circleImage.toString('base64')}`;
+    const rendered = await renderDesignStudioImage(template, {
+      template_variant: 'bottom_center',
+      headerText: 'CIRCLE TEST',
+      headerTextColor: '#ffffff',
+      backgroundImage,
+      useCircleInset: true,
+      circleInsetImage: `https://screndly.vercel.app/api/design-studio/media-stream?url=${encodeURIComponent(circleImageDataUri)}`,
+      circleX: 50,
+      circleY: 25,
+      circleSize: 240,
+      circleImageZoom: 1.67,
+      circleImageOffsetX: 0,
+      circleImageOffsetY: 0,
+      circleStrokeWidth: 0,
+      circleStrokeColor: '#ffffff',
+      circleImageFit: 'contain',
+      overlayOpacity: 0,
+      fadeEnabled: false,
+      exportFormat: 'png',
+    });
+
+    const { data } = await sharp(rendered.buffer)
+      .extract({ left: REFERENCE_CANVAS_WIDTH / 2, top: Math.round(REFERENCE_CANVAS_HEIGHT * 0.25), width: 1, height: 1 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    assert.ok(
+      data[0] > 200 && data[1] < 80 && data[2] < 80,
+      `expected red circle inset pixel in final export, received ${Array.from(data.slice(0, 3)).join(',')}`,
+    );
+  } finally {
+    prisma.setting.findMany = originalFindMany;
+  }
+});

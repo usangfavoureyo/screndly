@@ -1718,16 +1718,17 @@ async function fetchSourceBuffer(value?: string): Promise<Buffer | null> {
     const [, content] = value.split(',');
     return Buffer.from(content, 'base64');
   }
-  if (value.startsWith('/api/design-studio/media-stream')) {
-    try {
-      const parsed = new URL(value, 'http://localhost');
+  try {
+    const parsed = new URL(value, 'http://localhost');
+    if (parsed.pathname === '/api/design-studio/media-stream') {
       const originalUrl = parsed.searchParams.get('url');
       if (originalUrl) {
         return fetchSourceBuffer(originalUrl);
       }
-    } catch {
       return null;
     }
+  } catch {
+    // Non-URL strings fall through to the regular remote resolver below.
   }
   const remoteUrl = await resolveRemoteTemplateUrl(value);
   return fetchBytesFromUrl(remoteUrl);

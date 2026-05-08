@@ -28,6 +28,7 @@ const DEFAULT_PREVIEW_OVERLAY_OPACITY = 50;
 const headlinePreviewCache = new Map<string, string>();
 const FALLBACK_BACKGROUND =
   'radial-gradient(circle at 18% 88%, rgba(110, 102, 255, 0.92) 0%, rgba(110, 102, 255, 0.28) 22%, rgba(110, 102, 255, 0) 48%), radial-gradient(circle at 82% 14%, rgba(150, 118, 255, 0.32) 0%, rgba(150, 118, 255, 0) 30%), linear-gradient(180deg, #5b4f8d 0%, #463d78 24%, #2a274f 58%, #171925 100%)';
+let previewMeasureCanvas: HTMLCanvasElement | null = null;
 
 const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
   bottom_center: {
@@ -85,6 +86,24 @@ function estimateWordWidth(word: string, fontSize: number) {
   return widthUnits * fontSize;
 }
 
+function measureHeadlineWidth(text: string, fontSize: number, fontFamily: string) {
+  if (typeof document === 'undefined') {
+    return estimateWordWidth(text, fontSize);
+  }
+
+  try {
+    previewMeasureCanvas ||= document.createElement('canvas');
+    const context = previewMeasureCanvas.getContext('2d');
+    if (!context) {
+      return estimateWordWidth(text, fontSize);
+    }
+    context.font = `700 ${fontSize}px "${fontFamily}", "PF Din Text Comp Pro"`;
+    return context.measureText(text).width;
+  } catch {
+    return estimateWordWidth(text, fontSize);
+  }
+}
+
 function resolvePreviewTextBox(
   layout: PreviewLayout,
   widthScale: number,
@@ -126,41 +145,42 @@ function fitHeadline(
   targetWordsPerLine: number,
   lineHeightMultiplier: number,
   fontScale: number,
+  fontFamily: string,
+  baseFontSize = 96,
 ) {
   const normalizedText = text.replace(/\r\n/g, '\n');
   const hasManualBreaks = normalizedText.includes('\n');
+  const maxFontSize = Math.max(1, Math.round(baseFontSize * fontScale));
+  const minManualFontSize = Math.max(1, Math.round(34 * fontScale));
+  const minAutoFontSize = Math.max(1, Math.round(64 * fontScale));
+
   if (hasManualBreaks) {
     const rawLines = normalizedText.split('\n');
     while (rawLines.length > 0 && rawLines[0].trim().length === 0) rawLines.shift();
     while (rawLines.length > 0 && rawLines[rawLines.length - 1].trim().length === 0) rawLines.pop();
     const manualLines = rawLines.map((line) => line.trim()).filter((line) => line.length > 0);
     if (manualLines.length === 0) {
-      return { lines: [], fontSize: 88, lineHeight: 82 };
+      return { lines: [], fontSize: maxFontSize, lineHeight: maxFontSize * lineHeightMultiplier };
     }
-    const maxFontSize = 96;
-    const minFontSize = 34;
-    for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 2) {
-      const scaledFontSize = fontSize * fontScale;
-      const widestLine = Math.max(...manualLines.map((line) => estimateWordWidth(line, scaledFontSize)));
+    for (let fontSize = maxFontSize; fontSize >= minManualFontSize; fontSize -= 2) {
+      const widestLine = Math.max(...manualLines.map((line) => measureHeadlineWidth(line, fontSize, fontFamily)));
       if (widestLine <= textBox.width) {
         return { lines: manualLines, fontSize, lineHeight: fontSize * lineHeightMultiplier };
       }
     }
-    const fallbackFontSize = minFontSize;
+    const fallbackFontSize = minManualFontSize;
     return { lines: manualLines, fontSize: fallbackFontSize, lineHeight: fallbackFontSize * lineHeightMultiplier };
   }
 
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) {
-    return { lines: [], fontSize: 88, lineHeight: 82 };
+    return { lines: [], fontSize: maxFontSize, lineHeight: maxFontSize * lineHeightMultiplier };
   }
 
-  const maxFontSize = 96;
-  const minFontSize = 64;
   const maxLines = layout.alignment === 'center' ? 4 : 5;
 
   const lineWidth = (lineWords: string[], fontSize: number) =>
-    estimateWordWidth(lineWords.join(' '), fontSize * fontScale);
+    measureHeadlineWidth(lineWords.join(' '), fontSize, fontFamily);
 
   const buildBalancedLines = (fontSize: number) => {
     const bestByEnd = new Map<string, { lines: string[][]; score: number }>();
@@ -222,7 +242,7 @@ function fitHeadline(
       ?.lines.map((lineWords) => lineWords.join(' ')) || [];
   };
 
-  const preferredMinFontSize = Math.max(minFontSize, Math.round(maxFontSize * 0.8));
+  const preferredMinFontSize = Math.max(minAutoFontSize, Math.round(maxFontSize * 0.8));
   for (let fontSize = maxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
     if (lines.length > 0 && lines.length <= maxLines) {
@@ -230,7 +250,7 @@ function fitHeadline(
     }
   }
 
-  for (let fontSize = preferredMinFontSize - 2; fontSize >= minFontSize; fontSize -= 2) {
+  for (let fontSize = preferredMinFontSize - 2; fontSize >= minAutoFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
     if (lines.length > 0 && lines.length <= maxLines) {
       return { lines, fontSize, lineHeight: fontSize * lineHeightMultiplier };
@@ -313,6 +333,7 @@ export function LiveDesignPreview({
   const [fadeAssetError, setFadeAssetError] = useState(false);
   const [brandAssetError, setBrandAssetError] = useState(false);
   const [sourceDimensions, setSourceDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [, setFontReadyVersion] = useState(0);
   const rawSourceUrl = templatePreviewUrl || designData?.backgroundImage || '';
   const sourceUrl = useMemo(() => buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl, [rawSourceUrl]);
   const variantKey = designData?.templateVariant || 'bottom_center';
@@ -364,6 +385,8 @@ export function LiveDesignPreview({
     targetWordsPerLine,
     lineHeightMultiplier,
     fontScale,
+    previewFontFamily,
+    template?.baseFontSize || 96,
   );
   const headlinePreviewRequestKey = useMemo(() => {
     if (!useBackendHeadlinePreview || !template || !designData?.headerText?.trim()) {
@@ -544,6 +567,26 @@ export function LiveDesignPreview({
     };
   }, [designData?.headerText, headlinePreviewRequestKey, template]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined' || !('fonts' in document)) return;
+    let cancelled = false;
+    void document.fonts
+      .load('700 96px "PF Din Text Comp Pro"')
+      .then(() => document.fonts.ready)
+      .then(() => {
+        if (!cancelled) {
+          setFontReadyVersion((version) => version + 1);
+        }
+      })
+      .catch(() => {
+        // The fallback measurer still works if the browser cannot expose font loading state.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
       <style>{`
@@ -651,8 +694,8 @@ export function LiveDesignPreview({
             <div
               key={`${line}-${index}`}
               style={{
-                fontSize: `${Math.max(18, fittedHeadline.fontSize * fontScale * frameScale)}px`,
-                lineHeight: `${Math.max(18, fittedHeadline.fontSize * fontScale * lineHeightMultiplier * frameScale)}px`,
+                fontSize: `${Math.max(18, fittedHeadline.fontSize * frameScale)}px`,
+                lineHeight: `${Math.max(18, fittedHeadline.lineHeight * frameScale)}px`,
               }}
               className="leading-none"
             >
