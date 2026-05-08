@@ -2122,7 +2122,6 @@ export function EditDesignBottomSheet({
                         templatePreviewUrl={resolvedPreviewBackgroundSrc}
                         designData={currentPreviewData}
                         template={template}
-                        useBackendHeadlinePreview
                       />
                       <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
                         Tap to Expand
@@ -2575,7 +2574,6 @@ export function EditDesignBottomSheet({
                       templatePreviewUrl={resolvedPreviewBackgroundSrc}
                       designData={currentPreviewData}
                       template={template}
-                      useBackendHeadlinePreview
                     />
                     <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
                       Tap to Expand
@@ -2821,7 +2819,6 @@ export function EditDesignBottomSheet({
                   templatePreviewUrl={resolvedPreviewBackgroundSrc}
                   designData={currentPreviewData}
                   template={template}
-                  useBackendHeadlinePreview
                 />
               </div>
             </div>
